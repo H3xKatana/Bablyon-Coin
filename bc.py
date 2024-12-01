@@ -8,49 +8,68 @@ import json
 # Bablyon  
 # Block Class
 class Block:
-    def __init__(self, id, previous_hash,transaction_list,notes):
+    def __init__(self, id, previous_hash,transaction_list,notes,miner_address,difficulty,reward):
+        """
+        1 - identifier
+            a- block hash 
+            b - id
+        2- header 
+            a. 4-byte Version
+            b. 4-byte Timestamp
+            c. 4-byte Difficulty Target
+            d. 4-byte Nonce
+            e. 32-byte Previous Block Hash
+            f. 32-byte Merkle Root
+        """
+        ### identifier 
+        self.hash = self.calculate_block_hash()
         self.id = id 
+        ### header 
+        self.version = 1
+        self.timestamp = self.set_block_time()
         self.previous_hash = previous_hash 
-        self.timestamp = self.get_time()
+        self.difficulty_target = difficulty # changes will be made
+        self.nonce = 0 # 32 bit value used to solve the POW 
+        self.merkle_hash = self.calculate_merkle_root(self.transaction_list)
+        ### Transactions
+        self.coinbase_transaction = {
+            "from": "Bablyon core",
+            "to": miner_address,
+            "amount": reward # Initial mining reward
+        }
+        transaction_list.insert(0, self.coinbase_transaction)
         self.transaction_list = transaction_list 
         self.data = '-'.join(transaction_list)
-        self.merkle_hash = self.calculate_merkle_root(self.transaction_list)
-        self.hash = self.calculate_block_hash()
-        self.nonce = 0 # 32 bit value used to solve the POW 
+                
+        
         self.note = notes
         
-    def get_time(self):
+    def set_block_time(self):
         return time.time()
 
     def calculate_block_hash(self):
-        return sha256((str(self.index) + str(self.previous_hash) + str(self.timestamp) + str(self.merkle_hash)+str(self.data) + str(self.nonce)).encode()).hexdigest()
+        return sha256(str(self).encode()).hexdigest()
 
-    def calculate_merkle_root(transactions):
-    # hash value let you verify all transcations easily with a single hash
-    
-        hashes = [sha256(tx) for tx in transactions]
+    def calculate_merkle_root(self, transactions):
+        if not transactions:
+            return sha256(b'').hexdigest()
 
-        if len(transactions) == 1:
-            return sha256(transactions[0])
-        
+        hashes = [sha256(tx.encode()).hexdigest() for tx in transactions]
+
         while len(hashes) > 1:
             if len(hashes) % 2 != 0:  # Duplicate the last hash if odd
                 hashes.append(hashes[-1])
 
             # Combine pairs and hash
-            new_level = []
-            for i in range(0, len(hashes), 2):
-                combined = hashes[i] + hashes[i + 1]
-                new_level.append(sha256(combined))
-
-            hashes = new_level
+            hashes = [sha256((hashes[i] + hashes[i + 1]).encode()).hexdigest()
+                      for i in range(0, len(hashes), 2)]
 
         return hashes[0]
+
         
     def __repr__(self):
-        return f"Block({self.index}, {self.previous_hash}, {self.timestamp}, {self.data}, {self.hash}, {self.nonce})"
+        return f"{self.index}, {self.previous_hash}, {self.timestamp}, {self.data}, {self.hash}, {self.nonce}"
     
     def __str__(self):
-        return f"{self.index}-{self.previous_hash}-{self.timestamp}-{self.data}-{self.hash}-{self.merkle_hash}-{self.nonce})"
+        return f"{self.index}-{self.previous_hash}-{self.timestamp}-{self.data}-{self.merkle_hash}-{self.nonce}"
     
-
