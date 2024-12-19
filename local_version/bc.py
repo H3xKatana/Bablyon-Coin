@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.table import Table
 
 
+
 console = Console()
 # Bablyon  
 # Block Class
@@ -121,7 +122,7 @@ class BlockChain:
         for i in range(1,len(self.pending_transactions)):
             tx = self.pending_transactions[i]
             print('###DEBUG### \n',tx.verify_tx())
-            if True:
+            if tx.verify_tx():
                 self.valid_transactions.append(tx)
             
         return self.valid_transactions
@@ -198,7 +199,7 @@ class Wallet:
         transaction.sender_public_key = self.get_public_key()
 
     @staticmethod
-    def verify_transaction( transaction, signature, address) -> bool:
+    def verify_transaction(transaction, signature, address) -> bool:
         """
         Verify a transaction signature using public key.
         
@@ -210,15 +211,12 @@ class Wallet:
             bool: True if signature is valid
         """
         key = RSA.import_key(base64.b64decode(address.encode()))
-        
-        transaction_hash = sha256(str(transaction).encode()).hexdigest()
+        digest = SHA256.new()
+        digest.update(str(transaction).encode())
         signature_bytes = base64.b64decode(signature.encode())
         
-        
-
-
         try:
-            PKCS1_v1_5.new(key).verify(transaction_hash, signature_bytes)
+            PKCS1_v1_5.new(key).verify(digest, signature_bytes)
             return True
         except (ValueError, TypeError):
             return False
@@ -230,6 +228,7 @@ class Transaction:
         self.recipient = recipient
         self.amount = amount
         self.signature = None
+        self.sender_public_key = None
 
     def get_address(self):
         return self.sender
@@ -247,7 +246,7 @@ class Transaction:
         return str(self)
     
     def verify_tx(self):
-        if self.signature is None:
+        if self.signature is None or self.sender_public_key is None:
             return False
         return Wallet.verify_transaction(self, self.signature, self.sender_public_key)
 
@@ -283,9 +282,10 @@ def main():
 
     # Create some transactions
     tx1 = Transaction(wallet1.get_address(), wallet2.get_address(), 10)
+    time.sleep(2)
     tx2 = Transaction(wallet1.get_address(), wallet2.get_address(), 10)
     wallet1.sign_transaction(tx1)
-    wallet1.sign_transaction(tx1)
+    wallet1.sign_transaction(tx2)
 
     
     # Add transactions to the blockchain
@@ -298,9 +298,6 @@ def main():
     print("Pending transactions:", blockchain.pending_transactions)
     print("Pending transactions:", blockchain.valid_transactions)
     # Print the blockchain
-    print("Blockchain:")
-    for block in blockchain.chain:
-        print(block)
    
     
     display_blockchain(blockchain)
