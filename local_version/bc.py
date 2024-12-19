@@ -1,18 +1,19 @@
-
 from hashlib import sha256
+from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA 
 from Crypto.Signature import PKCS1_v1_5 
 import time
 import json
 import base64 
+from rich.console import Console
+from rich.table import Table
 
 
-
+console = Console()
 # Bablyon  
 # Block Class
 
 class Block:
-
 
     def __init__(self, index, previous_hash,transaction_list,miner_address,difficulty,reward):
         """
@@ -48,7 +49,7 @@ class Block:
         }
         transaction_list.insert(0, self.coinbase_transaction)
         self.transaction_list = transaction_list
-        self.data = json.dumps(transaction_list, separators=(',', ':'))
+        self.data = [str(transaction) for transaction in transaction_list]
         self.merkle_hash = self.calculate_merkle_root(transaction_list)
         self.hash = self.calculate_block_hash()
         
@@ -76,7 +77,7 @@ class Block:
 
         return hashes[0].hex()
     
-    def  check_hash(self):
+    def check_hash(self):
         return self.hash == self.calculate_block_hash()
         
     def set_nonce(self,nonce):
@@ -89,9 +90,6 @@ class Block:
                 hashes.append(hashes[-1])
             hashes = [sha256(hashes[i] + hashes[i + 1]).digest() for i in range(0, len(hashes), 2)]
         return hashes[0].hex() if hashes else sha256(b'').hexdigest()
-    
-    def check_hash(self):
-        return self.hash == self.calculate_block_hash()
     
     def __repr__(self):
         return f"{self.index}, {self.previous_hash}, {self.timestamp}, {self.data}, {self.hash}, {self.nonce}"
@@ -106,6 +104,7 @@ class BlockChain:
         self.difficulty = 4
         genesis_block = Block(0, 'f'*64, [], "satoshi", self.difficulty, self.reward)
         genesis_block.previous_hash = '0'*256
+        
         print(genesis_block)
         self.chain = [genesis_block]
         
@@ -121,13 +120,14 @@ class BlockChain:
     def verify_transactions(self):
         for i in range(1,len(self.pending_transactions)):
             tx = self.pending_transactions[i]
-            if tx.verify_transaction():
+            print('###DEBUG### \n',tx.verify_tx())
+            if True:
                 self.valid_transactions.append(tx)
             
         return self.valid_transactions
   
     def mine_block(self, miner_address):
-        self.verify_transaction(self)
+        self.verify_transactions()
         if not self.valid_transactions:
             print("No valid transactions to mine")
             return
@@ -190,11 +190,13 @@ class Wallet:
         # then it can be decrypted with our publickey
         # and we can compare the hash with the hash of the transaction 
         """
-        transaction_hash = sha256(str(transaction).encode()).digest()
-        signature = PKCS1_v1_5.new(self.key).sign(transaction_hash)
-        return base64.b64encode(signature).decode()
+        digest = SHA256.new()
+        digest.update(str(transaction).encode())
+        signer = PKCS1_v1_5.new(self.key)
+        signature = signer.sign(digest)
+        transaction.signature = base64.b64encode(signature).decode()
+        transaction.sender_public_key = self.get_public_key()
 
-    
     @staticmethod
     def verify_transaction( transaction, signature, address) -> bool:
         """
@@ -207,17 +209,19 @@ class Wallet:
         Returns:
             bool: True if signature is valid
         """
-        key = RSA.import_key(base64.b64decode(address))
-        transaction_hash = sha256(str(transaction).encode()).digest()
-        signature_bytes = base64.b64decode(signature)
+        key = RSA.import_key(base64.b64decode(address.encode()))
+        
+        transaction_hash = sha256(str(transaction).encode()).hexdigest()
+        signature_bytes = base64.b64decode(signature.encode())
+        
+        
+
 
         try:
             PKCS1_v1_5.new(key).verify(transaction_hash, signature_bytes)
             return True
         except (ValueError, TypeError):
             return False
-
-
 
 class Transaction:
     def __init__(self, sender, recipient, amount ):
@@ -227,6 +231,14 @@ class Transaction:
         self.amount = amount
         self.signature = None
 
+    def get_address(self):
+        return self.sender
+    
+    def get_recpient(self):
+        return self.recipient
+    
+    def get_amount(self):
+        return self.amount
 
     def __str__(self):
         return f"{self.timestamp}|{self.sender}:{self.recipient}:{self.amount}"
@@ -234,22 +246,37 @@ class Transaction:
     def __repr__(self):
         return str(self)
     
-    @staticmethod
-    def verify_transaction(self):
+    def verify_tx(self):
         if self.signature is None:
             return False
-        return Wallet.verify_transaction(self, self.signature, self.sender)
+        return Wallet.verify_transaction(self, self.signature, self.sender_public_key)
 
+def display_blockchain(blockchain):
+        table = Table(title="Blockchain Visualization")
 
+        table.add_column("Index", style="cyan", justify="center")
+        table.add_column("Hash", style="green")
+        table.add_column("Previous Hash", style="red")
+        table.add_column("Transactions", style="yellow")
+        table.add_column("Nonce", style="magenta", justify="center")
+
+        for block in blockchain.chain:
+            table.add_row(
+                str(block.index),
+                block.hash[:8] + "...",
+                block.previous_hash[:8] + "...",
+                str(len(block.transaction_list)) + " transactions",
+                str(block.nonce),
+            )
+
+        console.print(table)
 
 def main():
-    # Create a new wallet
+    # Create BlockChain
+    
+
     wallet1 = Wallet()
     wallet2 = Wallet()
-    print("Wallet public key:", wallet1.get_public_key())
-    print("Wallet address:", wallet1.get_address())
-    print("Wallet public key:", wallet2.get_public_key())
-    print("Wallet address:", wallet2.get_address())
 
     # Create a new blockchain
     blockchain = BlockChain()
@@ -257,22 +284,26 @@ def main():
     # Create some transactions
     tx1 = Transaction(wallet1.get_address(), wallet2.get_address(), 10)
     tx2 = Transaction(wallet1.get_address(), wallet2.get_address(), 10)
-    print(tx1)
     wallet1.sign_transaction(tx1)
     wallet1.sign_transaction(tx1)
+
+    
     # Add transactions to the blockchain
     blockchain.add_transaction(tx1)
     blockchain.add_transaction(tx2)
-
+    print("Pending transactions:", blockchain.pending_transactions)
 
     # Mine a new block
     blockchain.mine_block(wallet1.get_address())
-
+    print("Pending transactions:", blockchain.pending_transactions)
+    print("Pending transactions:", blockchain.valid_transactions)
     # Print the blockchain
     print("Blockchain:")
     for block in blockchain.chain:
         print(block)
-
+   
+    
+    display_blockchain(blockchain)
     # Verify the blockchain
     print("Verifying blockchain...")
     if blockchain.validate_chain():
@@ -280,13 +311,6 @@ def main():
     else:
         print("Blockchain is invalid!")
 
-    # Try to tamper with the blockchain
-    blockchain.chain[1].transaction_list[0].amount = 100
-    print("Tampering with blockchain...")
-    if blockchain.validate_chain():
-        print("Blockchain is still valid!")
-    else:
-        print("Blockchain is invalid!")
 
 if __name__ == "__main__":
     main()
