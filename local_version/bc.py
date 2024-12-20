@@ -1,21 +1,18 @@
+
+# Copyright (c) M_k(0xkatana) 2025
+# Licensed under the MIT License 
+
 from hashlib import sha256
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA 
 from Crypto.Signature import PKCS1_v1_5 
 import time
-import json
 import base64 
-from rich.console import Console
-from rich.table import Table
 
-
-
-console = Console()
 # Bablyon  
 # Block Class
 
 class Block:
-
     def __init__(self, index, previous_hash,transaction_list,miner_address,difficulty,reward):
         """
         1 - identifier
@@ -176,10 +173,34 @@ class Wallet:
         self.public_key = self.key.publickey().export_key()
         self.private_key = self.key.export_key()
 
+    @staticmethod
+    def load_wallet(private_key):
+    
+        private_key = base64.b64decode(private_key)
+        if not private_key:
+            raise ValueError("Private key is required to load wallet.")
+
+        try:
+            key = RSA.import_key(private_key)
+        except (ValueError, IndexError) as e:
+            raise ValueError("Invalid private key provided.") from e
+
+
+        public_key = key.publickey().export_key()
+        wallet = Wallet()
+        wallet.key = key
+        wallet.public_key = public_key
+        wallet.private_key = private_key
+        return wallet
+
     def get_public_key(self):
         """Get the public key encoded in Base64 format."""
         return base64.b64encode(self.public_key).decode()
 
+    def get_private_key(self):
+        """Get the private key encoded in Base64 format."""
+        return base64.b64encode(self.private_key).decode()
+    
     def get_address(self):
         """Generate a wallet address as a SHA-256 hash of the public key."""
         return sha256(self.public_key).hexdigest()
@@ -248,66 +269,6 @@ class Transaction:
     def verify_tx(self):
         if self.signature is None or self.sender_public_key is None:
             return False
+        
         return Wallet.verify_transaction(self, self.signature, self.sender_public_key)
 
-def display_blockchain(blockchain):
-        table = Table(title="Blockchain Visualization")
-
-        table.add_column("Index", style="cyan", justify="center")
-        table.add_column("Hash", style="green")
-        table.add_column("Previous Hash", style="red")
-        table.add_column("Transactions", style="yellow")
-        table.add_column("Nonce", style="magenta", justify="center")
-
-        for block in blockchain.chain:
-            table.add_row(
-                str(block.index),
-                block.hash[:8] + "...",
-                block.previous_hash[:8] + "...",
-                str(len(block.transaction_list)) + " transactions",
-                str(block.nonce),
-            )
-
-        console.print(table)
-
-def main():
-    # Create BlockChain
-    
-
-    wallet1 = Wallet()
-    wallet2 = Wallet()
-
-    # Create a new blockchain
-    blockchain = BlockChain()
-
-    # Create some transactions
-    tx1 = Transaction(wallet1.get_address(), wallet2.get_address(), 10)
-    time.sleep(2)
-    tx2 = Transaction(wallet1.get_address(), wallet2.get_address(), 10)
-    wallet1.sign_transaction(tx1)
-    wallet1.sign_transaction(tx2)
-
-    
-    # Add transactions to the blockchain
-    blockchain.add_transaction(tx1)
-    blockchain.add_transaction(tx2)
-    print("Pending transactions:", blockchain.pending_transactions)
-
-    # Mine a new block
-    blockchain.mine_block(wallet1.get_address())
-    print("Pending transactions:", blockchain.pending_transactions)
-    print("Pending transactions:", blockchain.valid_transactions)
-    # Print the blockchain
-   
-    
-    display_blockchain(blockchain)
-    # Verify the blockchain
-    print("Verifying blockchain...")
-    if blockchain.validate_chain():
-        print("Blockchain is valid!")
-    else:
-        print("Blockchain is invalid!")
-
-
-if __name__ == "__main__":
-    main()
