@@ -172,6 +172,7 @@ class Wallet:
         self.key = RSA.generate(2048)
         self.public_key = self.key.publickey().export_key()
         self.private_key = self.key.export_key()
+        self.create_time = time.strftime("%Y-%m-%d %H:%M:%S")
 
     @staticmethod
     def load_wallet(private_key):
@@ -241,6 +242,12 @@ class Wallet:
             return True
         except (ValueError, TypeError):
             return False
+    
+
+    def get_creation_time(self):
+        """Return the creation time of the wallet."""
+        return self.create_time
+
 
 class Transaction:
     def __init__(self, sender, recipient, amount ):
