@@ -47,7 +47,9 @@ class Client:
             print("File already exists")
             
 
-    def load_wallet(self):
+    def load_wallet(self,wallet_data=None):
+        if wallet_data != None:
+            return Wallet.load_wallet(wallet_data)
         try:
             with open('wallet.bc', 'r') as f:
                 private_key = f.read()
@@ -56,14 +58,13 @@ class Client:
             print("Wallet file not found")
             return None
 
-    def send_transaction(self):
+    def send_transaction(self,sender=None):
         """
         this function broadcast the transaction to the network
         """
-        sender = self.load_wallet()
         if sender == None:
-            print("Wallet not found")
-            return
+            sender = self.load_wallet()
+        
         receiver = input("Enter the receiver's address: ")
         amount = input("Enter the amount to send: ")
         tx = Transaction(sender.get_address(), receiver, amount)
