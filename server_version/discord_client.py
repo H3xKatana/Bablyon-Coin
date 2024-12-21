@@ -16,6 +16,25 @@ bot_client = cmd_client()
 # Global variable to store the wallet object
 wallet = None
 
+
+@bot.command()
+async def ping(ctx):
+    await ctx.send(f"Pong! Latency: {round(bot.latency * 1000)}ms")
+
+@bot.command()
+async def botinfo(ctx):
+    embed = discord.Embed(
+        title="Bot Information",
+        description="This is a client implementation for the Bablyon Blockchain",
+        color=0x3498db,
+    )
+    embed.set_author(name="0xkatana")
+    embed.add_field(name="Blockchain Name", value="Bablyon", inline=False)
+    embed.add_field(name="Block Size", value="1MB", inline=True)
+    embed.add_field(name="Block Time", value="10 minutes", inline=True)
+    embed.add_field(name="Consensus Algorithm", value="Proof of Work", inline=True)
+    await ctx.send(embed=embed)
+
 # Command: createwallet
 @bot.command()
 async def createwallet(ctx):
@@ -38,7 +57,6 @@ async def createwallet(ctx):
         await ctx.send(file=discord.File("wallet.bc"))
 
 # Command: loadwallet
-
 @bot.command()
 async def loadwallet(ctx):
     global wallet
