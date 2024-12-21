@@ -1,14 +1,11 @@
-import sys
-sys.path.append('../')
-
-from local_version.bc import Wallet
-from local_version.bc import Transaction
+from bc import Wallet,Transaction
 from requests import get , post 
 from Crypto.PublicKey import RSA 
 
 
-class client:
-    def __init__(self):
+class Client:
+    
+    def action_list(self):
         action_map = {
             '1': self.create_wallet,
             '2': self.send_transaction,
@@ -28,18 +25,24 @@ class client:
             if action in action_map:
                 action_map[action]()
                 break
-            print("Invalid Action")
-        
+            print("Invalid Action")        
 
-    def create_wallet(self):
+    def create_wallet(self,wallet_file=None):
         wallet = Wallet()
         print(f"Your Public Key: {wallet.get_public_key()}")
         print(f"Your Private Key: {wallet.get_private_key()}")
         print(f"Your Address: {wallet.get_address()}")
         try:
-            with open('wallet.bc', 'w') as f:
-                f.write(wallet.get_private_key())
-            print("Wallet created and saved to wallet.bc")
+            if wallet_file != None:
+                with open(wallet_file, 'w') as f:
+                    f.write(wallet.get_private_key())
+                print(f"Wallet created and saved to {wallet_file}")
+                return wallet
+            else:
+                with open('wallet.bc', 'w') as f:
+                    f.write(wallet.get_private_key())
+                print("Wallet created and saved to wallet.bc")
+                return wallet
         except FileExistsError:
             print("File already exists")
             
@@ -48,13 +51,15 @@ class client:
         try:
             with open('wallet.bc', 'r') as f:
                 private_key = f.read()
-                print('####DEBUG private_key:', private_key)
             return Wallet.load_wallet(private_key)
         except FileNotFoundError:
             print("Wallet file not found")
             return None
 
     def send_transaction(self):
+        """
+        this function broadcast the transaction to the network
+        """
         sender = self.load_wallet()
         if sender == None:
             print("Wallet not found")
@@ -85,5 +90,7 @@ class client:
         exit()
 
 
-
-clinet = client() 
+def main():
+    clinet = Client() 
+    while True:
+        clinet.action_list()
