@@ -3,7 +3,7 @@ from discord.ext import commands
 import json
 from bc import Wallet
 from cmd_client import Client as CmdClient
-
+import requests
 # Load configuration from config.json
 with open('config/bot_config.json') as f:
     config = json.load(f)
@@ -25,15 +25,19 @@ async def on_ready():
     print(f'Logged in as {bot.user}')
 
 
-# Command: Ping
+
 @bot.command(
     help="Checks the bot's responsiveness and displays latency in milliseconds.",
-    description="Use this command to test if the bot is online and responsive."
-)
+    description="Use this command to test if the bot is online and responsive.")
 async def ping(ctx):
-    """Respond with the bot's latency."""
     latency = round(bot.latency * 1000)
-    await ctx.send(f"Pong! Latency: {latency}ms")
+    bot_ip = requests.get('https://api.ipify.org').text
+    print(bot_ip)
+    embed = discord.Embed(title="IP Addresses", color=0x3498db)
+    embed.add_field(name="Bot IP Address", value=bot_ip, inline=False)
+    embed.add_field(name = f"Pong! Latency:", value=latency  )
+    await ctx.send(embed=embed)
+
 
 
 # Command: Bot Info
