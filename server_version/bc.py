@@ -8,6 +8,8 @@ from Crypto.PublicKey import RSA
 from Crypto.Signature import PKCS1_v1_5 
 import time
 import base64 
+import os
+import pickle
 
 # Bablyon  
 # Block Class
@@ -52,7 +54,12 @@ class Block:
         self.merkle_hash = self.calculate_merkle_root(transaction_list)
         self.hash = self.calculate_block_hash()
         self.size = len(self.data)
-        
+
+        # data maybe needed later 
+        self.creation_time = time.time()
+        self.mining_time = None
+        self.propagation_delay = None
+     
     def set_block_time(self):
         return int(time.time())
         
@@ -100,94 +107,7 @@ class Block:
     
     def __str__(self):
         return f"{self.previous_hash}-{self.timestamp}-{self.data}-{self.merkle_hash}-{self.nonce}"
-
-
-class BlockChain:
     
-    def __init__(self) -> None:
-        self.reward = 50 
-        self.difficulty = 4
-        genesis_block = Block(0, 'f'*64, [], "satoshi", self.difficulty, self.reward)
-        genesis_block.previous_hash = '0'*256
-        self.difficulty_adjustment_interval=100
-        self.last_difficulty = 0
-        self.block_times =[] # record times needed for each block
-        print(genesis_block)
-        self.chain = [genesis_block]
-        
-        self.pending_transactions = []
-        self.valid_transactions =[]
-    
-    def add_transaction(self, transaction):
-        self.pending_transactions.append(transaction)
-
-    def get_last_block_hash(self):
-        return self.chain[-1].hash
-    
-    def verify_transactions(self):
-        for i in range(1,len(self.pending_transactions)):
-            tx = self.pending_transactions[i]
-            print('###DEBUG### \n',tx.verify_tx())
-            if tx.verify_tx():
-                self.valid_transactions.append(tx)
-            
-        return self.valid_transactions
-  
-    def mine_block(self, miner_address):
-        self.verify_transactions()
-        if not self.valid_transactions:
-            print("No valid transactions to mine")
-            return
-        
-        nonce = 0
-        new_block = Block(len(self.chain), self.get_last_block_hash(), self.valid_transactions, miner_address, self.difficulty, self.reward)
-        
-        target = '0' * self.difficulty
-        calculate_hash = new_block.calculate_block_hash
-        
-        max_nonce = 2**32  # max size of the integer 4 bytes
-        while new_block.hash[:self.difficulty] != target:
-            if nonce >= max_nonce:
-                print("Failed to find a valid nonce")
-                return
-            nonce += 1
-            new_block.set_nonce(nonce)
-            new_block.hash = calculate_hash()
-        
-        if new_block.hash[:self.difficulty] == target:  
-            print("found a valid block hash :",new_block.hash)
-            self.chain.append(new_block)
-            self.valid_transactions = []      
-
-    def adjust_difficulty(self):
-        """Adjust mining difficulty based on block times."""
-        if len(self.chain) % self.difficulty_adjustment_interval == 0:
-            actual_time = sum(self.block_times[-self.difficulty_adjustment_interval:])
-            expected_time = self.target_block_time * self.difficulty_adjustment_interval
-            
-            if actual_time < expected_time / 4:
-                self.difficulty += 1
-            elif actual_time > expected_time * 4:
-                self.difficulty = max(1, self.difficulty - 1)
-            
-            self.last_difficulty_adjustment = len(self.chain)
-
-    def validate_chain(self):
-        if not self.chain:
-            return False
-        
-        for i in range(1, len(self.chain)):
-
-            current_block = self.chain[i]
-            previous_block = self.chain[i-1]
-            if not current_block or not previous_block:
-                return False
-            previous_hash = previous_block.hash
-            if current_block.previous_hash != previous_hash:
-                return False
-        return True
-
-
 class Wallet:
     def __init__(self):
         """Initialize a wallet with an RSA key pair."""
@@ -265,11 +185,9 @@ class Wallet:
         except (ValueError, TypeError):
             return False
     
-
     def get_creation_time(self):
         """Return the creation time of the wallet."""
         return self.create_time
-
 
 class Transaction:
     def __init__(self, sender, recipient, amount ,fee):
@@ -277,16 +195,16 @@ class Transaction:
         self.sender = sender
         self.recipient = recipient
         self.amount = amount
+        self.fee = fee
         self.signature = None
         self.sender_public_key = None
-        self.fee = fee
-
+        
     def get_address(self):
         return self.sender
     
     def get_recpient(self):
         return self.recipient
-    
+     
     def get_amount(self):
         return self.amount
 
@@ -296,9 +214,240 @@ class Transaction:
     def __repr__(self):
         return str(self)
     
-    def verify_tx(self):
-        if self.signature is None or self.sender_public_key is None:
+    def verify_tx(self) -> bool:
+        """Verify transaction signature and validity"""
+        if None in (self.signature, self.sender_public_key):
             return False
+            
+        # Verify amount and fee are positive
+        if self.amount <= 0 or self.fee < 0:
+            return False
+            
+        # Verify signature
+        return Wallet.verify_transaction(
+            self,
+            self.signature,
+            self.sender_public_key
+        )
+
+class BlockChain:
+    def __init__(self) -> None:
+        # Configuration
+        self.MAX_CHAIN_LENGTH = 1000000  # Maximum blocks in memory
+        self.BLOCK_REWARD_HALVING_INTERVAL = 210000  # Blocks until reward halves
+        self.TARGET_BLOCK_TIME = 10  #  in seconds
+        self.DIFFICULTY_ADJUSTMENT_WINDOW = 200  # Number of blocks for difficulty adjustment
+        self.MAX_FUTURE_BLOCK_TIME = 60  # 2 hours in seconds
         
-        return Wallet.verify_transaction(self, self.signature, self.sender_public_key)
+        # Initialize chain state
+        self.reward = 50
+        self.difficulty = 4
+        self.last_difficulty_adjustment = 0
+        self.block_times = []
+        self.total_work = 0  # Cumulative proof of work
+        
+        # Create genesis block
+        genesis_block = self._create_genesis_block()
+        self.chain = [genesis_block]
+        
+        # Transaction pools
+        self.pending_transactions = {}  # Hash -> Transaction
+        self.valid_transactions = []
+        
+        # Initialize thread pool for parallel validation
+        
+        
+        # Cache frequently accessed data
+        self._cache = {}
+        
+    def _create_genesis_block(self) -> Block:
+        """Create and return genesis block"""
+        genesis = Block(
+            index=0,
+            previous_hash='0' * 64,
+            transaction_list=[],
+            miner_address="satoshi",
+            difficulty=self.difficulty,
+            reward=self.reward
+        )
+        genesis.header.previous_hash = '0' * 256
+        return genesis
+    
+    def add_transaction(self, transaction: Transaction) -> bool:
+        """Add transaction to pending pool with validation"""
+        try:
+            # Basic validation
+            if not transaction.verify_tx():
+                print(f"Invalid transaction signature: {transaction}")
+                return False
+                
+            # Check if transaction already exists
+            tx_hash = sha256(str(transaction).encode()).hexdigest()
+            if tx_hash in self.pending_transactions:
+                print(f"Duplicate transaction: {tx_hash}")
+                return False
+            
+            # Add to pending pool
+            self.pending_transactions[tx_hash] = transaction
+            print(f"Added transaction {tx_hash} to pending pool")
+            return True
+            
+        except Exception as e:
+            print(f"Error adding transaction: {e}")
+            return False
+    
+    def mine_block(self, miner_address: str) :
+        """Mine a new block with improved difficulty adjustment"""
+        try:
+            # Verify and select transactions
+            valid_txs = self._select_transactions()
+            if not valid_txs:
+                print("No valid transactions to mine")
+                return None
+            
+            # Create new block
+            new_block = Block(
+                index=len(self.chain),
+                previous_hash=self.get_last_block_hash(),
+                transaction_list=valid_txs,
+                miner_address=miner_address,
+                difficulty=self.difficulty,
+                reward=self._calculate_reward()
+            )
+            
+            # Mine block
+            start_time = time.time()
+            if self._mine_block(new_block):
+                # Update chain state
+                new_block.mining_time = time.time() - start_time
+                self.chain.append(new_block)
+                self._update_chain_state(new_block)
+                self._remove_mined_transactions(valid_txs)
+                
+                print(f"Successfully mined block {new_block.hash}")
+                return new_block
+            
+            return None
+            
+        except Exception as e:
+            print(f"Error mining block: {e}")
+            return None
+    
+    def _select_transactions(self) :
+        
+            """Select and validate transactions for new block"""
+            valid_txs = []
+            total_size = 0
+
+            # Sort by fee per byte
+            sorted_txs = sorted(
+                self.pending_transactions.values(),
+                key=lambda tx: tx.fee / len(str(tx))
+            )
+
+            for tx in sorted_txs:
+                tx_size = len(str(tx))
+                if total_size + tx_size > Block.MAX_BLOCK_SIZE:
+                    break
+
+                if tx.verify_tx():
+                    valid_txs.append(tx)
+                    total_size += tx_size
+
+            return valid_txs       
+    
+    def _mine_block(self, block: Block) -> bool:
+        """Perform proof-of-work mining"""
+        target = '0' * self.difficulty
+        max_nonce = 2**32
+        
+        for nonce in range(max_nonce):
+            block.nonce = nonce
+            block_hash = block.calculate_block_hash()
+            
+            if block_hash[:self.difficulty] == target:
+                block.hash = block_hash
+                return True
+                
+        return False
+    
+    def _update_chain_state(self, block: Block) -> None:
+        """Update blockchain state each  new block appended """
+        # Update difficulty
+        if len(self.chain) % self.DIFFICULTY_ADJUSTMENT_WINDOW == 0:
+            self._adjust_difficulty()
+        
+        # Update reward
+        if len(self.chain) % self.BLOCK_REWARD_HALVING_INTERVAL == 0:
+            self.reward /= 2
+        
+        # Total work of the chain will be used for consexne algorithm
+        self.total_work += 2 ** self.difficulty
+        
+        # Record block time
+        self.block_times.append(block.timestamp)
+        
+        # Clear old cache entries
+        self._cache.clear()
+    
+    def _adjust_difficulty(self) -> None:
+        """Adjust mining difficulty based on block times"""
+        if len(self.block_times) < self.DIFFICULTY_ADJUSTMENT_WINDOW:
+            return
+            
+        time_taken = self.block_times[-1] - self.block_times[-self.DIFFICULTY_ADJUSTMENT_WINDOW] # retrive the last blocks for adjusment 
+        expected_time = self.TARGET_BLOCK_TIME * self.DIFFICULTY_ADJUSTMENT_WINDOW # total time that was initily needed 
+        
+        if time_taken < expected_time / 2:
+            self.difficulty += 1
+        elif time_taken > expected_time * 2:
+            self.difficulty = max(1, self.difficulty - 1)
+            
+        print(f"Adjusted difficulty to {self.difficulty}")
+    
+    def _calculate_reward(self) -> float:
+        """Calculate current block reward"""
+        # each time length of the chain reach BlOCK_REWARD_Halving the reward will be halved 
+        return self.reward / (2 ** (len(self.chain) // self.BLOCK_REWARD_HALVING_INTERVAL))
+    
+    def validate_chain(self, chain = None) -> bool:
+        """Validate entire blockchain"""
+        chain = chain or self.chain
+        
+        for i in range(1, len(chain)):
+            current = chain[i]
+            previous = chain[i-1]
+            
+            # Validate block order
+            if current.index != previous.index + 1:
+                return False
+            
+            # Validate hash linkage
+            if current.header.previous_hash != previous.hash:
+                return False
+            
+            # Validate block hash
+            if current.hash != current.calculate_block_hash():
+                return False
+            
+            # Validate merkle root
+            if not current.validate_merkle_root():
+                return False
+            
+            # Validate timestamp
+            if current.header.timestamp <= previous.header.timestamp:
+                return False
+            
+            # Validate transactions
+            try:
+                current._validate_transactions(current.transaction_list)
+            except ValueError:
+                return False
+        
+        return True
+
+        
+
+
+
 
