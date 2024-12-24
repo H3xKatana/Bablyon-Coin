@@ -273,6 +273,7 @@ class BlockChain:
         genesis.header.previous_hash = '0' * 256
         return genesis
     
+
     def add_transaction(self, transaction: Transaction) -> bool:
         """Add transaction to pending pool with validation"""
         try:
@@ -323,7 +324,7 @@ class BlockChain:
                 self.chain.append(new_block)
                 self._update_chain_state(new_block)
                 self._remove_mined_transactions(valid_txs)
-                
+                self.save_chain("blockchain.dat")
                 print(f"Successfully mined block {new_block.hash}")
                 return new_block
             
@@ -333,6 +334,24 @@ class BlockChain:
             print(f"Error mining block: {e}")
             return None
     
+    def _calculate_balances(self):
+        """Calculate the balance of each address"""
+        self.balances = {}
+        for block in self.chain:
+            for tx in block.transaction_list:
+                if tx.sender not in self.balances:
+                    self.balances[tx.sender] = 0
+                if tx.receiver not in self.balances:
+                    self.balances[tx.receiver] = 0
+                self.balances[tx.sender] -= tx.amount 
+                self.balances[tx.receiver] += tx.amount
+        return self.balances
+    
+    def _has_sufficient_balance(self, tx):
+        """Check if the sender has enough balance for the transaction"""
+        return self.balances.get(tx.sender, 0) >= tx.amount + tx.fee
+    
+
     def _select_transactions(self) :
         
             """Select and validate transactions for new block"""
@@ -349,10 +368,10 @@ class BlockChain:
                 tx_size = len(str(tx))
                 if total_size + tx_size > Block.MAX_BLOCK_SIZE:
                     break
-
-                if tx.verify_tx():
-                    valid_txs.append(tx)
-                    total_size += tx_size
+                if  self._has_sufficient_balance(tx):
+                    if tx.verify_tx():
+                        valid_txs.append(tx)
+                        total_size += tx_size
 
             return valid_txs       
     
@@ -405,6 +424,9 @@ class BlockChain:
             
         print(f"Adjusted difficulty to {self.difficulty}")
     
+    def get_address_balance(self,address):
+        return self.balances.get(address, 0)
+
     def _calculate_reward(self) -> float:
         """Calculate current block reward"""
         # each time length of the chain reach BlOCK_REWARD_Halving the reward will be halved 
@@ -446,7 +468,25 @@ class BlockChain:
         
         return True
 
-        
+    
+    def save_chain(self, filepath):
+        """Save the blockchain to a file."""
+        with open(filepath, 'wb') as file:
+            pickle.dump(self.chain, file)
+        print(f"Blockchain saved to {filepath}")
+
+    @staticmethod
+    def load_chain(filepath) :
+        """Load the blockchain from a file."""
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"{filepath} does not exist")
+    
+        with open(filepath, 'rb') as file:
+            chain = pickle.load(file)
+        print(f"Blockchain loaded from {filepath}")
+
+        return chain
+
 
 
 
