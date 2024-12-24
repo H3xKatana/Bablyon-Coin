@@ -62,7 +62,9 @@ class Block:
      
     def set_block_time(self):
         return int(time.time())
-        
+    
+    def set_nonce(self,nonce):
+        self.nonce =nonce
     def calculate_block_hash(self):
         return sha256(str(self).encode()).hexdigest()
 
@@ -190,7 +192,7 @@ class Wallet:
         return self.create_time
 
 class Transaction:
-    def __init__(self, sender, recipient, amount ,fee):
+    def __init__(self, sender, recipient, amount ,fee=0):
         self.timestamp = int(time.time())
         self.sender = sender
         self.recipient = recipient
@@ -198,7 +200,13 @@ class Transaction:
         self.fee = fee
         self.signature = None
         self.sender_public_key = None
+    
+    def set_transaction(self,sender_public_key):
+        self.sender_public_key  = sender_public_key
         
+    def set_signature(self,signature):
+        self.signature = signature
+
     def get_address(self):
         return self.sender
     
@@ -245,7 +253,7 @@ class BlockChain:
         self.last_difficulty_adjustment = 0
         self.block_times = []
         self.total_work = 0  # Cumulative proof of work
-        
+        self.balances = {}
         # Create genesis block
         genesis_block = self._create_genesis_block()
         self.chain = [genesis_block]
@@ -266,14 +274,13 @@ class BlockChain:
             index=0,
             previous_hash='0' * 64,
             transaction_list=[],
-            miner_address="satoshi",
+            miner_address="a65cbc8301aa2922c141dee61df860a0a407fce7581a2d8af098699f332856f9",
             difficulty=self.difficulty,
             reward=self.reward
         )
-        genesis.header.previous_hash = '0' * 256
+        genesis.previous_hash = '0' * 256
         return genesis
     
-
     def add_transaction(self, transaction: Transaction) -> bool:
         """Add transaction to pending pool with validation"""
         try:
@@ -348,10 +355,10 @@ class BlockChain:
         return self.balances
     
     def _has_sufficient_balance(self, tx):
+        
         """Check if the sender has enough balance for the transaction"""
         return self.balances.get(tx.sender, 0) >= tx.amount + tx.fee
     
-
     def _select_transactions(self) :
         
             """Select and validate transactions for new block"""
@@ -406,8 +413,8 @@ class BlockChain:
         # Record block time
         self.block_times.append(block.timestamp)
         
-        # Clear old cache entries
-        self._cache.clear()
+        
+        self._calculate_balances()
     
     def _adjust_difficulty(self) -> None:
         """Adjust mining difficulty based on block times"""
@@ -425,7 +432,7 @@ class BlockChain:
         print(f"Adjusted difficulty to {self.difficulty}")
     
     def get_address_balance(self,address):
-        return self.balances.get(address, 0)
+        return self.balances.get(address,0)
 
     def _calculate_reward(self) -> float:
         """Calculate current block reward"""
@@ -468,7 +475,6 @@ class BlockChain:
         
         return True
 
-    
     def save_chain(self, filepath):
         """Save the blockchain to a file."""
         with open(filepath, 'wb') as file:
@@ -479,7 +485,9 @@ class BlockChain:
     def load_chain(filepath) :
         """Load the blockchain from a file."""
         if not os.path.exists(filepath):
-            raise FileNotFoundError(f"{filepath} does not exist")
+            chain = BlockChain()
+            return chain
+
     
         with open(filepath, 'rb') as file:
             chain = pickle.load(file)
@@ -487,7 +495,42 @@ class BlockChain:
 
         return chain
 
+    def get_last_block_hash(self):
+        self.chain[-1].hash
 
+
+    def is_valid_block(self,block):
+        """
+        :param block: The block to check
+        :return: True if the block is valid, False otherwise
+        """
+        # Check if the block index is valid
+        if block.index < 0:
+            return False
+
+        # Check if the block hash is valid
+        if block.hash != block.calculate_block_hash():
+            return False
+
+        # Check if the block timestamp is valid
+        if block.timestamp < 0:
+            return False
+
+        # Check if the block nonce is valid
+        if block.nonce < 0:
+            return False
+
+        # Check if the block previous hash is valid
+        if block.previous_hash is None or len(block.previous_hash) != 256 // 8:
+            return False
+
+
+
+        # Check if the block merkle root is valid
+        if not block.validate_merkle_root():
+            return False
+
+        return True
 
 
 
