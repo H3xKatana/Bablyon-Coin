@@ -48,8 +48,10 @@ class Block:
         transaction_list.insert(0, self.coinbase_transaction)
         self.transaction_list = transaction_list
         self.data = [str(transaction) for transaction in transaction_list]
+        self.total_fees = sum(tx.fee for tx in transaction_list if hasattr(tx, 'fee'))
         self.merkle_hash = self.calculate_merkle_root(transaction_list)
         self.hash = self.calculate_block_hash()
+        self.size = len(self.data)
         
     def set_block_time(self):
         return int(time.time())
@@ -89,11 +91,16 @@ class Block:
             hashes = [sha256(hashes[i] + hashes[i + 1]).digest() for i in range(0, len(hashes), 2)]
         return hashes[0].hex() if hashes else sha256(b'').hexdigest()
     
+    def calculate_block_reward(self) -> float:
+        """Calculate total block reward including fees."""
+        return self.reward + self.total_fees
+
     def __repr__(self):
         return f"{self.index}, {self.previous_hash}, {self.timestamp}, {self.data}, {self.hash}, {self.nonce}"
     
     def __str__(self):
         return f"{self.previous_hash}-{self.timestamp}-{self.data}-{self.merkle_hash}-{self.nonce}"
+
 
 class BlockChain:
     
@@ -102,7 +109,9 @@ class BlockChain:
         self.difficulty = 4
         genesis_block = Block(0, 'f'*64, [], "satoshi", self.difficulty, self.reward)
         genesis_block.previous_hash = '0'*256
-        
+        self.difficulty_adjustment_interval=100
+        self.last_difficulty = 0
+        self.block_times =[] # record times needed for each block
         print(genesis_block)
         self.chain = [genesis_block]
         
@@ -150,6 +159,19 @@ class BlockChain:
             self.chain.append(new_block)
             self.valid_transactions = []      
 
+    def adjust_difficulty(self):
+        """Adjust mining difficulty based on block times."""
+        if len(self.chain) % self.difficulty_adjustment_interval == 0:
+            actual_time = sum(self.block_times[-self.difficulty_adjustment_interval:])
+            expected_time = self.target_block_time * self.difficulty_adjustment_interval
+            
+            if actual_time < expected_time / 4:
+                self.difficulty += 1
+            elif actual_time > expected_time * 4:
+                self.difficulty = max(1, self.difficulty - 1)
+            
+            self.last_difficulty_adjustment = len(self.chain)
+
     def validate_chain(self):
         if not self.chain:
             return False
@@ -173,7 +195,7 @@ class Wallet:
         self.public_key = self.key.publickey().export_key()
         self.private_key = self.key.export_key()
         self.create_time = time.strftime("%Y-%m-%d %H:%M:%S")
-
+        
     @staticmethod
     def load_wallet(private_key):
     
@@ -250,13 +272,14 @@ class Wallet:
 
 
 class Transaction:
-    def __init__(self, sender, recipient, amount ):
+    def __init__(self, sender, recipient, amount ,fee):
         self.timestamp = int(time.time())
         self.sender = sender
         self.recipient = recipient
         self.amount = amount
         self.signature = None
         self.sender_public_key = None
+        self.fee = fee
 
     def get_address(self):
         return self.sender
@@ -268,7 +291,7 @@ class Transaction:
         return self.amount
 
     def __str__(self):
-        return f"{self.timestamp}|{self.sender}:{self.recipient}:{self.amount}"
+        return f"{self.timestamp}|{self.sender}:{self.recipient}:{self.amount}-{self.fee}"
 
     def __repr__(self):
         return str(self)
