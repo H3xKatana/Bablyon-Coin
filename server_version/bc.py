@@ -92,13 +92,6 @@ class Block:
     def set_nonce(self,nonce):
         self.nonce = nonce
 
-    def calculate_merkle_root(self, transactions):
-        hashes = [sha256(str(tx).encode()).digest() for tx in transactions]
-        while len(hashes) > 1:
-            if len(hashes) % 2 != 0:
-                hashes.append(hashes[-1])
-            hashes = [sha256(hashes[i] + hashes[i + 1]).digest() for i in range(0, len(hashes), 2)]
-        return hashes[0].hex() if hashes else sha256(b'').hexdigest()
     
     def calculate_block_reward(self) -> float:
         """Calculate total block reward including fees."""
