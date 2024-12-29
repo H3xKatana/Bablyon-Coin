@@ -235,10 +235,10 @@ class BlockChain:
     def __init__(self) -> None:
         # Configuration
         self.MAX_CHAIN_LENGTH = 1000000  # Maximum blocks in memory
-        self.BLOCK_REWARD_HALVING_INTERVAL = 210000  # Blocks until reward halves
+        self.BLOCK_REWARD_HALVING_INTERVAL = 40  # Blocks until reward halves
         self.TARGET_BLOCK_TIME = 10  #  in seconds
-        self.DIFFICULTY_ADJUSTMENT_WINDOW = 200  # Number of blocks for difficulty adjustment
-        self.MAX_FUTURE_BLOCK_TIME = 60  # 2 hours in seconds
+        self.DIFFICULTY_ADJUSTMENT_WINDOW = 20  # Number of blocks for difficulty adjustment
+        self.MAX_FUTURE_BLOCK_TIME = 60  # in seconds
         
         # Initialize chain state
         self.reward = 50
@@ -302,9 +302,6 @@ class BlockChain:
         try:
             # Verify and select transactions
             valid_txs = self._select_transactions()
-            if not valid_txs:
-                print("No valid transactions to mine")
-                return None
             
             # Create new block
             new_block = Block(
